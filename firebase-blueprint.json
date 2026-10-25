@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and balance",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "coins": { "type": "number" },
+        "referralCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "coins", "createdAt"]
+    },
+    "Campaign": {
+      "title": "Video Campaign",
+      "description": "A campaign created by a user to get views",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "videoId": { "type": "string" },
+        "videoTitle": { "type": "string" },
+        "targetViews": { "type": "number" },
+        "currentViews": { "type": "number" },
+        "rewardPerView": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed", "paused"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "videoId", "targetViews", "rewardPerView", "status", "createdAt"]
+    },
+    "View": {
+      "title": "Video View",
+      "description": "A record of a user viewing a campaign",
+      "type": "object",
+      "properties": {
+        "viewerId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "rewardClaimed": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["viewerId", "campaignId", "rewardClaimed", "timestamp"]
+    },
+    "Transaction": {
+      "title": "Coin Transaction",
+      "description": "A record of coin earnings or spendings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["earn", "spend", "purchase", "bonus", "redeem"] },
+        "description": { "type": "string" },
+        "redeemCode": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "createdAt"]
+    },
+    "MarketProduct": {
+      "title": "Marketplace Product",
+      "description": "Content listed for sale (scripts, thumbnails, etc.)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string", "enum": ["script", "thumbnail", "strategy"] },
+        "contentUrl": { "type": "string" },
+        "previewUrl": { "type": "string" },
+        "salesCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["creatorId", "title", "price", "category", "createdAt"]
+    },
+    "LeaderboardEntry": {
+      "title": "Leaderboard Entry",
+      "description": "Public ranking information for a creator",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "coins": { "type": "number" },
+        "level": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "coins"]
+    },
+    "Redemption": {
+      "title": "Redemption Cashout Request",
+      "description": "Cashout request made by a user via UPI or Play Code",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "method": { "type": "string", "enum": ["upi", "play_code"] },
+        "amountInr": { "type": "number" },
+        "amount": { "type": "number" },
+        "upiId": { "type": "string" },
+        "utrNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed", "rejected"] },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "method", "amountInr", "amount", "status", "createdAt"]
+    },
+    "CoinPurchase": {
+      "title": "Coin Purchase Deposit",
+      "description": "Coin purchase verification with admin QR scanner",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "packId": { "type": "string" },
+        "packName": { "type": "string" },
+        "coins": { "type": "number" },
+        "priceInr": { "type": "number" },
+        "utrNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "coins", "priceInr", "utrNumber", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Public video campaigns"
+    },
+    "/marketplace/{productId}": {
+      "schema": "MarketProduct",
+      "description": "Public marketplace items"
+    },
+    "/leaderboard/{entryId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public leaderboard rankings"
+    },
+    "/redemptions/{redemptionId}": {
+      "schema": "Redemption",
+      "description": "User cashout requests"
+    },
+    "/coin_purchases/{purchaseId}": {
+      "schema": "CoinPurchase",
+      "description": "User coin purchase deposits"
+    },
+    "/users/{userId}/views/{viewId}": {
+      "schema": "View",
+      "description": "Private history of views for a user"
+    },
+    "/users/{userId}/transactions/{txId}": {
+      "schema": "Transaction",
+      "description": "Private transaction history"
+    }
+  }
+}

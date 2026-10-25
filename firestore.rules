@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isAdmin() { return request.auth != null && request.auth.token.email == 'sanjuladubey05@gmail.com'; }
+
+    // User Profile
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == userId &&
+               data.email is string &&
+               data.coins is number &&
+               data.coins >= 0 &&
+               data.referralCode is string &&
+               data.createdAt is string &&
+               (!('lastDailyClaim' in data) || data.lastDailyClaim is string) &&
+               (!('photoURL' in data) || data.photoURL is string) &&
+               (!('rewardDay' in data) || data.rewardDay is number) &&
+               (!('referredBy' in data) || (data.referredBy == null || data.referredBy is string)) &&
+               (!('displayName' in data) || data.displayName is string);
+      }
+
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.referredBy == request.auth.uid) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && (incoming().coins == 50 || incoming().coins == 100);
+      allow update: if (isOwner(userId) && isValidUser(incoming()) && (
+        // Identity check
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        // Allow updating coins, display name, claim history and reward day
+        incoming().diff(existing()).affectedKeys().hasOnly(['coins', 'displayName', 'lastDailyClaim', 'photoURL', 'rewardDay'])
+      )) || (
+        // Server-like update for rewards
+        isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['coins', 'lastDailyClaim', 'rewardDay'])
+      ) || isAdmin();
+    }
+
+    // Campaigns
+    match /campaigns/{campaignId} {
+      function isValidCampaign(data) {
+        return data.ownerId is string &&
+               (!('platform' in data) || data.platform in ['youtube', 'instagram', 'facebook', 'other']) &&
+               (!('targetUrl' in data) || data.targetUrl is string) &&
+               data.videoTitle is string &&
+               data.targetViews is number &&
+               data.currentViews is number &&
+               data.rewardPerView is number &&
+               data.status in ['active', 'completed', 'paused'] &&
+               data.createdAt is string;
+      }
+
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(incoming().ownerId) && isValidCampaign(incoming()) && incoming().currentViews == 0;
+      allow update: if isSignedIn() && (
+        // Owner updates (pause, move, boost etc)
+        (isOwner(existing().ownerId) && incoming().ownerId == existing().ownerId) ||
+        // Viewer updates (increment currentViews and set completed if target reached)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['currentViews', 'status']) && 
+         incoming().currentViews >= existing().currentViews) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Marketplace
+    match /marketplace/{productId} {
+      function isValidProduct(data) {
+        return data.creatorId is string &&
+               data.title is string && data.title.size() <= 100 &&
+               data.description is string && data.description.size() <= 1000 &&
+               data.price is number && data.price >= 0 &&
+               data.category in ['script', 'thumbnail', 'strategy', 'template', 'course', 'mentorship', 'video', 'hook', 'sfx', 'overlay', 'giftcard'] &&
+               data.salesCount is number &&
+               data.createdAt is string;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isOwner(incoming().creatorId) || (incoming().creatorId == 'system' && isAdmin())) && isValidProduct(incoming());
+      allow update: if isSignedIn() && (
+        isOwner(existing().creatorId) || isAdmin() ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['salesCount']) && 
+         incoming().salesCount == existing().salesCount + 1)
+      );
+      allow delete: if isSignedIn() && (isOwner(existing().creatorId) || isAdmin());
+    }
+
+    // Redemptions (Cashouts)
+    match /redemptions/{redemptionId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // Coin Purchases / Deposits with Admin Scanner & Approval
+    match /coin_purchases/{purchaseId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // Push Notifications (FCM / in-app)
+    match /notifications/{notifId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // FCM Device Tokens
+    match /users/{userId}/fcmTokens/{tokenId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // AI Outputs
+    match /users/{userId}/ai_outputs/{outputId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Viewed records (History)
+    match /users/{userId}/views/{viewId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && 
+                      isSignedIn() && 
+                      exists(/databases/$(database)/documents/campaigns/$(incoming().campaignId));
+    }
+
+    // Transactions
+    match /users/{userId}/transactions/{txId} {
+      allow read: if isOwner(userId);
+      allow create: if isSignedIn(); // Allow anyone to record a transaction (e.g. for a sale they triggered)
+    }
+
+    // Global Leaderboard
+    match /leaderboard/{entryId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (isOwner(incoming().uid) || isAdmin());
+      allow delete: if isAdmin();
+    }
+  }
+}
